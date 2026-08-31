@@ -72,3 +72,13 @@
 - 验证：第一轮完整保存 System/Human/AI(ToolCall)/ToolMessage/AI，第二轮在同一 thread 追加 Human/AI；不同 thread 状态隔离；共享 Store 跨 thread 可见，且新 thread 的模型输入实际包含共享知识 SystemMessage；完整测试 `30 passed`
 - 得分：未单独评分
 - 是否通过：工程验收通过；学生独立复述能力未单独测量
+
+## 模块 7：Interrupt、Resume 与人工审批
+
+- 状态：已完成（真实业务示例模式）
+- 已实现：高风险重启工具、审批申请单、`interrupt()` 暂停、同 thread 的
+  `Command(resume=...)` 恢复、批准凭证精确匹配和拒绝不执行
+- 实际示例：批准路线在恢复后产生模拟重启执行回执；拒绝路线只产生明确的拒绝
+  ToolMessage。两条路线都保留完整 System/Human/AI(ToolCall)/ToolMessage/AI 状态，
+  最终清空一次性审批凭证
+- 是否通过：核心暂停与恢复链路已经由可直接运行的用户业务示例完整体现

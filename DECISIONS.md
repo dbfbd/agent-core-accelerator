@@ -65,3 +65,15 @@
 - Store 使用 `("service_knowledge", service)` namespace，明确不把 `thread_id` 放进共享知识地址。
 - Store 知识先转换成带稳定 message ID 的独立 `SystemMessage`，再由 `thread_continue()` 注入模型输入；该消息与主系统规则保持可见区分。
 - InMemorySaver 与 InMemoryStore 仅用于课程和测试，进程退出后数据消失；生产版本改用数据库实现。
+
+## D-010：高风险动作使用动态 interrupt 审批门
+
+- 只读工具继续走 `model -> tools`；`restart_service` 走
+  `model -> approval -> tools`，避免无风险查询也被迫等待人工操作。
+- `interrupt()` 前只构造纯数据申请单，因为恢复时审批节点会从开头重新执行。
+- 人的决定与原始 tool call 的 ID、名称和参数组成 `ApprovalProof`，防止一张批准单
+  被挪用到另一项动作。
+- 拒绝会形成与原 ToolCall ID 对应的 ToolMessage，让模型能解释“未执行”的原因，
+  但不会调用高风险函数。
+- 课程仍使用内存 checkpointer 和模拟重启；生产环境应使用持久化 checkpointer，
+  并把实际执行器接到受审计的运维系统。

@@ -15,11 +15,16 @@ from incident_agent.agent_loop import (
     AsyncChatModel,
     ToolBindableModel,
 )
+from incident_agent.approval_gate import (
+    build_approval_ticket,
+    pause_for_human,
+    tool_needs_human,
+)
 from incident_agent.graph_state import AgentState, AgentStateUpdate
 from incident_agent.tool_runtime import TOOL_SCHEMAS, execute_tool_call
 
 type ModelNode = Callable[[AgentState], Awaitable[AgentStateUpdate]]
-type NextNode = Literal["tools", "__end__"]
+type NextNode = Literal["approval", "tools", "__end__"]
 
 
 class UnexpectedGraphStateError(RuntimeError):
@@ -59,11 +64,22 @@ def _last_ai_message(state: AgentState) -> AIMessage:
 
 
 def route_after_model(state: AgentState) -> NextNode:
-    """Choose the tools node when the model requested tools, otherwise finish."""
+    """Route protected calls to approval, ordinary calls to tools, or finish."""
 
-    if _last_ai_message(state).tool_calls:
-        return "tools"
-    return END
+    tool_calls = _last_ai_message(state).tool_calls
+    if not tool_calls:
+        return END
+    if any(tool_needs_human(tool_call) for tool_call in tool_calls):
+        return "approval"
+    return "tools"
+
+
+def request_human_approval(state: AgentState) -> AgentStateUpdate:
+    """Pause on protected calls and save the matching human decision."""
+
+    tool_calls = _last_ai_message(state).tool_calls
+    ticket = build_approval_ticket(tool_calls)
+    return {"approval": pause_for_human(ticket)}
 
 
 async def execute_tools(state: AgentState) -> AgentStateUpdate:
@@ -72,8 +88,10 @@ async def execute_tools(state: AgentState) -> AgentStateUpdate:
     ai_message = _last_ai_message(state)
     tool_messages = []
     for tool_call in ai_message.tool_calls:
-        tool_messages.append(await execute_tool_call(tool_call))
-    return {"messages": tool_messages}
+        tool_messages.append(
+            await execute_tool_call(tool_call, approval=state["approval"])
+        )
+    return {"messages": tool_messages, "approval": None}
 
 
 def build_agent_graph(
@@ -89,14 +107,16 @@ def build_agent_graph(
     builder = StateGraph(AgentState)
 
     builder.add_node("model", _make_model_node(bound_model, max_model_calls))
+    builder.add_node("approval", request_human_approval)
     builder.add_node("tools", execute_tools)
 
     builder.add_edge(START, "model")
     builder.add_conditional_edges(
         "model",
         route_after_model,
-        {"tools": "tools", END: END},
+        {"approval": "approval", "tools": "tools", END: END},
     )
+    builder.add_edge("approval", "tools")
     builder.add_edge("tools", "model")
 
     return builder.compile(
@@ -114,6 +134,7 @@ def create_initial_state(user_input: str) -> AgentState:
             HumanMessage(content=user_input),
         ],
         "model_calls": 0,
+        "approval": None,
     }
 
 

@@ -1,6 +1,6 @@
 # Architecture
 
-## 当前结构：模块 6 Thread、Checkpoint、Store
+## 当前结构：模块 7 Interrupt、Resume 与人工审批
 
 ```text
 agent-core-accelerator/
@@ -27,7 +27,11 @@ agent-core-accelerator/
 │     ├─ agent_events.py # 对外稳定的流式业务事件
 │     ├─ streaming_agent.py # 原始图 update 到业务事件的翻译层
 │     ├─ thread_archive.py # thread地址、自动存档和会话续接
-│     └─ shared_knowledge.py # 跨thread服务知识Store
+│     ├─ shared_knowledge.py # 跨thread服务知识Store
+│     ├─ action_tools.py # 必须经人工审批的高风险动作
+│     └─ approval_gate.py # 审批申请、暂停和授权匹配
+├─ examples/
+│  └─ module_07_approval.py # 批准与拒绝两条可运行路线
 └─ tests/
    ├─ test_package.py     # 包安装边界测试
    ├─ test_models.py      # 输入校验测试
@@ -156,4 +160,22 @@ store_save_service_note(shared_store, note_from_thread_A)
 → store_recall_as_system_message() 创建共享知识SystemMessage
 → thread_continue(thread_B, context_messages=[knowledge_message])
 → thread_B模型实际读取主System/共享知识System/Human
+```
+
+## 模块 7 调用链
+
+```text
+thread_continue(graph, thread_id, HumanMessage)
+→ model返回AIMessage(ToolCall: restart_service)
+→ route_after_model()识别高风险工具并进入approval节点
+→ request_human_approval()构造ApprovalTicket
+→ interrupt(ticket)暂停并由checkpointer保存现场
+→ checkpoint_load_pending_approval()把申请单交给调用方
+→ thread_resume_approval(HumanDecision)
+→ Command(resume=decision)回到同一个approval节点
+→ pause_for_human()得到恢复值并构造ApprovalProof
+→ tools节点把ApprovalProof交给execute_tool_call()
+   ├─ 批准且精确匹配：restart_service()返回RestartReceipt
+   └─ 拒绝：不调用restart_service()，返回ActionDenied ToolMessage
+→ model读取ToolMessage并输出最终AIMessage
 ```

@@ -11,21 +11,21 @@
 | 4 | LangGraph 核心 | 已完成：自动验证，自检模式 |
 | 5 | Streaming 与事件模型 | 已完成：自动验证，自检模式 |
 | 6 | Thread、Checkpoint、Store | 已完成：自动验证，自检模式 |
-| 7 | Interrupt、Resume 与人工审批 | 待学习 |
+| 7 | Interrupt、Resume 与人工审批 | 已完成：真实业务示例验证 |
 | 8 | FastAPI Agent Service | 待学习 |
 | 9 | Tool Reliability | 待学习 |
 | 10 | MCP | 待学习 |
 | 11 | RAG | 待学习 |
-| 12 | Tracing、Testing 与 Evaluation | 待学习 |
+| 12 | Tracing 与 Evaluation | 待学习 |
 | 13 | 毕业整理与源码迁移 | 待学习 |
 
 ## 当前模块目标
 
-下一模块将在可恢复线程上加入 interrupt、resume 和人工审批。
+下一模块将把 Agent 包装成 FastAPI 服务，提供真实 HTTP 调用边界。
 
 ## 教学节奏
 
 - 以文件为最小讲解单元，先说明依赖、职责和缺失后果，再创建或修改。
-- 实现文件与直接测试它的文件可以成对处理。
+- 新模块只展示核心实现文件和可直接运行的业务示例，不再扩展测试文件。
 - 普通问题由教师自问自答；模块验收只保留关键的调用链复述或找错题。
 - 以 20 小时为压缩目标，但不删除核心模块或降低验收标准。

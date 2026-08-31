@@ -4,10 +4,19 @@
 
 ## 当前阶段
 
-模块 6：Thread、Checkpoint、Store。
+模块 7：Interrupt、Resume 与人工审批。
 
 当前已有确定性故障证据工具、显式 LangGraph state/node/edge、稳定流式业务事件、
-同thread检查点续接和跨thread共享知识。真实 LLM 与 HTTP 服务将在后续模块接入。
+同thread检查点续接、跨thread共享知识，以及高风险动作的人工批准/拒绝恢复链路。
+真实 LLM 与 HTTP 服务将在后续模块接入。
+
+## 模块 7 实际示例
+
+```powershell
+uv run python examples/module_07_approval.py
+```
+
+该示例先展示待审批申请和暂停时的完整消息，再分别恢复批准与拒绝路线。
 
 ## 当前命令
 
