@@ -1,0 +1,29 @@
+[project]
+name = "incident-agent"
+version = "0.1.0"
+description = "Reliable DevOps Incident Agent teaching lab"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "langchain-core>=1,<2",
+    "langgraph>=1,<2",
+    "pydantic>=2,<3",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.4",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
