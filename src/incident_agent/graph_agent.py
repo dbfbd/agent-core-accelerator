@@ -21,9 +21,10 @@ from incident_agent.approval_gate import (
     tool_needs_human,
 )
 from incident_agent.graph_state import AgentState, AgentStateUpdate
-from incident_agent.tool_runtime import TOOL_SCHEMAS, execute_tool_call
+from incident_agent.tool_runtime import DEFAULT_TOOL_RUNTIME, ToolRuntime
 
 type ModelNode = Callable[[AgentState], Awaitable[AgentStateUpdate]]
+type ToolNode = Callable[[AgentState], Awaitable[AgentStateUpdate]]
 type NextNode = Literal["approval", "tools", "__end__"]
 
 
@@ -82,16 +83,29 @@ def request_human_approval(state: AgentState) -> AgentStateUpdate:
     return {"approval": pause_for_human(ticket)}
 
 
-async def execute_tools(state: AgentState) -> AgentStateUpdate:
+async def execute_tools(
+    state: AgentState,
+    *,
+    tool_runtime: ToolRuntime = DEFAULT_TOOL_RUNTIME,
+) -> AgentStateUpdate:
     """Execute every tool call requested by the latest AI message."""
 
     ai_message = _last_ai_message(state)
     tool_messages = []
     for tool_call in ai_message.tool_calls:
         tool_messages.append(
-            await execute_tool_call(tool_call, approval=state["approval"])
+            await tool_runtime.execute(tool_call, approval=state["approval"])
         )
     return {"messages": tool_messages, "approval": None}
+
+
+def _make_tools_node(tool_runtime: ToolRuntime) -> ToolNode:
+    """Create a graph node bound to one shared reliable tool runtime."""
+
+    async def call_tools(state: AgentState) -> AgentStateUpdate:
+        return await execute_tools(state, tool_runtime=tool_runtime)
+
+    return call_tools
 
 
 def build_agent_graph(
@@ -100,15 +114,17 @@ def build_agent_graph(
     *,
     checkpoint_saver: BaseCheckpointSaver | None = None,
     knowledge_store: BaseStore | None = None,
+    tool_runtime: ToolRuntime | None = None,
 ) -> CompiledStateGraph:
     """Define nodes and edges, then compile an executable agent graph."""
 
-    bound_model = model.bind_tools(TOOL_SCHEMAS)
+    runtime = tool_runtime or DEFAULT_TOOL_RUNTIME
+    bound_model = model.bind_tools(runtime.tool_schemas)
     builder = StateGraph(AgentState)
 
     builder.add_node("model", _make_model_node(bound_model, max_model_calls))
     builder.add_node("approval", request_human_approval)
-    builder.add_node("tools", execute_tools)
+    builder.add_node("tools", _make_tools_node(runtime))
 
     builder.add_edge(START, "model")
     builder.add_conditional_edges(
@@ -142,8 +158,14 @@ async def run_graph_agent(
     model: ToolBindableModel,
     user_input: str,
     max_model_calls: int = 4,
+    *,
+    tool_runtime: ToolRuntime | None = None,
 ) -> AgentState:
     """Build and run the graph from one user request."""
 
-    graph = build_agent_graph(model, max_model_calls)
+    graph = build_agent_graph(
+        model,
+        max_model_calls,
+        tool_runtime=tool_runtime,
+    )
     return await graph.ainvoke(create_initial_state(user_input))

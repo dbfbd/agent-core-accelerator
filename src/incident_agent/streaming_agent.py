@@ -12,6 +12,7 @@ from incident_agent.agent_events import (
     AgentStreamEvent,
     ApprovalRequiredEvent,
     ToolCompletedEvent,
+    ToolFailedEvent,
     ToolRequest,
     ToolsRequestedEvent,
 )
@@ -91,7 +92,12 @@ async def stream_compiled_graph(
                         raise UnexpectedStreamUpdateError(
                             "The tools update must contain only ToolMessage objects"
                         )
-                    yield ToolCompletedEvent(
+                    event_type = (
+                        ToolFailedEvent
+                        if message.status == "error"
+                        else ToolCompletedEvent
+                    )
+                    yield event_type(
                         name=message.name or "unknown",
                         tool_call_id=message.tool_call_id,
                         content=_message_text(message.content),

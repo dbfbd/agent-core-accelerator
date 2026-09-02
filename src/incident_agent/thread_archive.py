@@ -12,6 +12,7 @@ from incident_agent.agent_loop import ToolBindableModel
 from incident_agent.approval_gate import ApprovalTicket, HumanDecision
 from incident_agent.graph_agent import build_agent_graph, create_initial_state
 from incident_agent.graph_state import AgentState, AgentStateUpdate
+from incident_agent.tool_runtime import ToolRuntime
 
 type ThreadAddress = RunnableConfig
 
@@ -33,6 +34,8 @@ def thread_make_address(thread_id: str) -> ThreadAddress:
 def checkpoint_build_resumable_agent(
     model: ToolBindableModel,
     max_model_calls: int = 4,
+    *,
+    tool_runtime: ToolRuntime | None = None,
 ) -> CompiledStateGraph:
     """Compile an agent with an in-memory checkpoint saver."""
 
@@ -40,6 +43,7 @@ def checkpoint_build_resumable_agent(
         model,
         max_model_calls,
         checkpoint_saver=InMemorySaver(),
+        tool_runtime=tool_runtime,
     )
 
 

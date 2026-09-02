@@ -13,7 +13,7 @@
 | 6 | Thread、Checkpoint、Store | 已完成：自动验证，自检模式 |
 | 7 | Interrupt、Resume 与人工审批 | 已完成：真实业务示例验证 |
 | 8 | FastAPI Agent Service | 已完成：真实 HTTP 示例验证 |
-| 9 | Tool Reliability | 待学习 |
+| 9 | Tool Reliability | 已完成：真实可靠性示例验证 |
 | 10 | MCP | 待学习 |
 | 11 | RAG | 待学习 |
 | 12 | Tracing 与 Evaluation | 待学习 |
@@ -21,7 +21,7 @@
 
 ## 当前模块目标
 
-下一模块将为工具执行加入 timeout、错误分类、选择性 retry 和最小 audit 记录。
+下一模块将使用 MCP 把外部进程提供的工具接入现有 ToolCatalog 和 ToolRuntime。
 
 ## 教学节奏
 

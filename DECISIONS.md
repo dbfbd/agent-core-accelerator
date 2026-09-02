@@ -93,3 +93,16 @@
 - 当前服务使用固定教学令牌、ScriptedModel、内存 checkpointer 和单进程 Uvicorn。
   生产环境应使用安全的密钥管理、真实模型客户端、持久化 checkpointer、多实例
   状态协调、速率限制、结构化日志和更完整的权限策略。
+
+## D-012：可靠性策略位于工具函数之外
+
+- ToolCatalog 把模型看到的 schema 与实际异步 handler 绑定，ToolRuntime 不再依赖
+  随工具数量增长的 `if/elif`。
+- 业务工具继续只表达自己的业务规则；timeout、错误分类和 retry 由
+  `tool_reliability.py` 统一处理，避免每个工具复制一套控制代码。
+- 只有 ToolSpec 标记 retry_safe，且错误属于 timeout、TransientToolError 或
+  ConnectionError 时才可以重试；参数错误、未知服务、未知异常和高风险重启默认
+  不重试，防止重复执行可能有副作用的动作。
+- 工具耗尽尝试后转换成带原 ToolCall ID 的错误 ToolMessage，让模型能够解释失败，
+  而不是直接破坏整张图。审批凭证缺失仍抛出 ToolApprovalError，不降级为普通失败。
+- 每一次真实尝试形成 ToolAttemptRecord；拒绝操作记为 attempt=0，明确它没有执行。

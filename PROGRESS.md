@@ -98,3 +98,17 @@
 - 验证：锁文件检查、Ruff 静态检查和格式检查通过；未运行测试
 - 是否通过：HTTP、SSE、thread、history 和 approval/resume 已由可直接运行的
   本地网络示例完整体现
+
+## 模块 9：Tool Reliability
+
+- 状态：已完成（真实业务示例模式）
+- 已实现：统一 ToolCatalog、可注入 ToolRuntime、timeout、暂时/永久/超时错误分类、
+  retry_safe 选择性 retry、逐次 ToolAttemptRecord、失败 ToolMessage 和 tool_failed
+  流式事件
+- 实际示例：暂时故障第一次记录 retrying、第二次成功；永久 ValueError 即使最多
+  允许三次也只执行一次；慢工具在 0.01 秒限制后产生 timeout。三条路线均保存完整
+  System/Human/AI(ToolCall)/ToolMessage/AI，失败路线仍由模型生成最终解释
+- 验证：真实模块九示例、锁文件检查、Ruff 静态检查、格式检查和 Git diff 检查通过；
+  未运行测试
+- 是否通过：工具成功、可重试失败、不可重试失败和超时路线均有 Message、事件与
+  audit 三层一致证据

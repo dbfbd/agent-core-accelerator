@@ -46,6 +46,15 @@ class ToolCompletedEvent(AgentEvent):
     content: str
 
 
+class ToolFailedEvent(AgentEvent):
+    """One requested tool ended with a controlled error ToolMessage."""
+
+    event: Literal["tool_failed"] = "tool_failed"
+    name: str
+    tool_call_id: str
+    content: str
+
+
 class AgentCompletedEvent(AgentEvent):
     """The graph reached END after the model produced a final answer."""
 
@@ -65,6 +74,7 @@ type AgentStreamEvent = (
     AgentStartedEvent
     | ToolsRequestedEvent
     | ToolCompletedEvent
+    | ToolFailedEvent
     | AgentCompletedEvent
     | ApprovalRequiredEvent
 )

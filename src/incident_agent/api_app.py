@@ -25,6 +25,7 @@ from incident_agent.thread_archive import (
     PendingApprovalError,
     checkpoint_build_resumable_agent,
 )
+from incident_agent.tool_runtime import ToolRuntime, build_default_tool_runtime
 
 router = APIRouter()
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -34,7 +35,10 @@ bearer_scheme = HTTPBearer(auto_error=False)
 async def app_lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Build the shared saved-state agent at startup and release it at shutdown."""
 
-    graph = checkpoint_build_resumable_agent(app.state.agent_model)
+    graph = checkpoint_build_resumable_agent(
+        app.state.agent_model,
+        tool_runtime=app.state.tool_runtime,
+    )
     app.state.agent_service = AgentHttpService(graph)
     yield
     del app.state.agent_service
@@ -163,7 +167,12 @@ async def stream_agent(
         yield event
 
 
-def create_app(*, model: ToolBindableModel, api_token: str) -> FastAPI:
+def create_app(
+    *,
+    model: ToolBindableModel,
+    api_token: str,
+    tool_runtime: ToolRuntime | None = None,
+) -> FastAPI:
     """Create one configured FastAPI application around a supplied chat model."""
 
     if not api_token.strip():
@@ -176,5 +185,6 @@ def create_app(*, model: ToolBindableModel, api_token: str) -> FastAPI:
     )
     app.state.agent_model = model
     app.state.api_token = api_token
+    app.state.tool_runtime = tool_runtime or build_default_tool_runtime()
     app.include_router(router)
     return app

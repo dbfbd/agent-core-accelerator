@@ -1,6 +1,6 @@
 # Architecture
 
-## 当前结构：模块 8 FastAPI Agent Service
+## 当前结构：模块 9 Tool Reliability
 
 ```text
 agent-core-accelerator/
@@ -20,6 +20,9 @@ agent-core-accelerator/
 │     ├─ fixtures.py    # 固定本地证据
 │     ├─ tools.py       # 确定性只读工具
 │     ├─ tool_runtime.py # ToolCall 到 Python 工具的桥
+│     ├─ tool_catalog.py # 工具名称、schema与异步handler目录
+│     ├─ tool_reliability.py # timeout、错误分类和选择性retry
+│     ├─ tool_audit.py # 每一次工具尝试的最小审计账本
 │     ├─ scripted_model.py # 确定性假模型
 │     ├─ agent_loop.py  # 手工 model-tool-model 循环
 │     ├─ graph_state.py # LangGraph 共享状态及部分更新结构
@@ -35,7 +38,8 @@ agent-core-accelerator/
 │     └─ api_app.py # FastAPI lifespan、Bearer校验和HTTP/SSE路由
 ├─ examples/
 │  ├─ module_07_approval.py # 批准与拒绝两条可运行路线
-│  └─ module_08_http.py # 真实Uvicorn服务器和HTTP客户端路线
+│  ├─ module_08_http.py # 真实Uvicorn服务器和HTTP客户端路线
+│  └─ module_09_tool_reliability.py # 重试、永久错误和超时路线
 └─ tests/
    ├─ test_package.py     # 包安装边界测试
    ├─ test_models.py      # 输入校验测试
@@ -224,3 +228,24 @@ POST /invoke触发interrupt
 → restart_service()或ActionDenied
 → 完整ToolMessage与最终AIMessage返回客户端
 ```
+
+## 模块 9 调用链
+
+```text
+AIMessage(ToolCall)
+→ graph_agent.py:execute_tools()
+→ tool_runtime.py:ToolRuntime.execute()
+→ approval_gate检查高风险权限
+→ tool_catalog.py:ToolCatalog.resolve()找到ToolSpec
+→ tool_reliability.py:run_with_reliability()
+   ├─ 每次handler调用由asyncio.timeout限制等待时间
+   ├─ retry_safe + timeout/transient + 仍有次数：记录retrying并再次执行
+   ├─ permanent或次数耗尽：记录failed并抛出ToolExecutionFailed
+   └─ 成功：记录succeeded并返回工具结果
+→ ToolRuntime把结果或ToolFailureReceipt转成同ToolCall ID的ToolMessage
+→ streaming_agent根据ToolMessage.status发送tool_completed或tool_failed
+→ model读取ToolMessage并生成最终AIMessage
+```
+
+ToolCatalog只回答“工具在哪里”；ToolReliability只回答“失败后怎么办”；
+ToolAuditLog只记录“每次实际发生了什么”；ToolRuntime负责按固定顺序组织三者。
