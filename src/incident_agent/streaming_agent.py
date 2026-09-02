@@ -3,17 +3,22 @@
 from collections.abc import AsyncIterator
 
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
+from langgraph.graph.state import CompiledStateGraph
 
 from incident_agent.agent_events import (
     AgentCompletedEvent,
     AgentStartedEvent,
     AgentStreamEvent,
+    ApprovalRequiredEvent,
     ToolCompletedEvent,
     ToolRequest,
     ToolsRequestedEvent,
 )
 from incident_agent.agent_loop import ToolBindableModel
+from incident_agent.approval_gate import ApprovalTicket
 from incident_agent.graph_agent import build_agent_graph, create_initial_state
+from incident_agent.graph_state import AgentState, AgentStateUpdate
 
 
 class UnexpectedStreamUpdateError(RuntimeError):
@@ -28,24 +33,33 @@ def _message_text(content: str | list[str | dict[str, object]]) -> str:
     return str(content)
 
 
-async def stream_graph_agent(
-    model: ToolBindableModel,
+async def stream_compiled_graph(
+    graph: CompiledStateGraph,
+    graph_input: AgentState | AgentStateUpdate,
+    *,
     user_input: str,
-    max_model_calls: int = 4,
+    config: RunnableConfig | None = None,
 ) -> AsyncIterator[AgentStreamEvent]:
-    """Yield business events as graph nodes finish their work."""
+    """Translate one compiled graph run into stable public business events."""
 
-    graph = build_agent_graph(model, max_model_calls)
     yield AgentStartedEvent(user_input=user_input)
     final_answer: str | None = None
     final_model_calls = 0
 
     async for part in graph.astream(
-        create_initial_state(user_input),
+        graph_input,
+        config,
         stream_mode="updates",
         version="v2",
     ):
         for node_name, update in part["data"].items():
+            if node_name == "__interrupt__":
+                interruption = update[0]
+                yield ApprovalRequiredEvent(
+                    ticket=ApprovalTicket.model_validate(interruption.value)
+                )
+                return
+
             messages = update.get("messages", [])
 
             if node_name == "model":
@@ -91,3 +105,19 @@ async def stream_graph_agent(
         model_calls=final_model_calls,
         answer=final_answer,
     )
+
+
+async def stream_graph_agent(
+    model: ToolBindableModel,
+    user_input: str,
+    max_model_calls: int = 4,
+) -> AsyncIterator[AgentStreamEvent]:
+    """Build one temporary graph and yield its public business events."""
+
+    graph = build_agent_graph(model, max_model_calls)
+    async for event in stream_compiled_graph(
+        graph,
+        create_initial_state(user_input),
+        user_input=user_input,
+    ):
+        yield event

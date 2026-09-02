@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from incident_agent.approval_gate import ApprovalTicket
+
 
 class AgentEvent(BaseModel):
     """Shared validation rules for every public stream event."""
@@ -52,6 +54,17 @@ class AgentCompletedEvent(AgentEvent):
     answer: str
 
 
+class ApprovalRequiredEvent(AgentEvent):
+    """The graph paused and exposed one high-risk action for human review."""
+
+    event: Literal["approval_required"] = "approval_required"
+    ticket: ApprovalTicket
+
+
 type AgentStreamEvent = (
-    AgentStartedEvent | ToolsRequestedEvent | ToolCompletedEvent | AgentCompletedEvent
+    AgentStartedEvent
+    | ToolsRequestedEvent
+    | ToolCompletedEvent
+    | AgentCompletedEvent
+    | ApprovalRequiredEvent
 )

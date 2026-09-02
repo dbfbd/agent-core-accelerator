@@ -82,3 +82,19 @@
   ToolMessage。两条路线都保留完整 System/Human/AI(ToolCall)/ToolMessage/AI 状态，
   最终清空一次性审批凭证
 - 是否通过：核心暂停与恢复链路已经由可直接运行的用户业务示例完整体现
+
+## 模块 8：FastAPI Agent Service
+
+- 状态：已完成（真实 HTTP 示例模式）
+- 已实现：FastAPI lifespan、Bearer 身份验证、Pydantic HTTP 契约、`/health`、
+  `/invoke`、`/stream`、`/resume`、`/history/{thread_id}`，以及带 checkpoint 的
+  JSON 和 SSE 两种调用方式
+- 实际示例：Uvicorn 真实监听 `127.0.0.1:8765`；健康检查返回 200；无令牌调用
+  返回 401；普通调用返回完整 System/Human/AI；SSE 依次返回
+  agent_started/tools_requested/tool_completed/agent_completed；history 保存完整
+  System/Human/AI(ToolCall)/ToolMessage/AI；高风险请求返回 approval_required，
+  `/resume` 后才产生 RestartReceipt ToolMessage；高风险 SSE 返回
+  agent_started/tools_requested/approval_required
+- 验证：锁文件检查、Ruff 静态检查和格式检查通过；未运行测试
+- 是否通过：HTTP、SSE、thread、history 和 approval/resume 已由可直接运行的
+  本地网络示例完整体现

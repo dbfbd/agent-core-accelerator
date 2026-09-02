@@ -5,9 +5,11 @@ description = "Reliable DevOps Incident Agent teaching lab"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.135,<1",
     "langchain-core>=1,<2",
     "langgraph>=1,<2",
     "pydantic>=2,<3",
+    "uvicorn>=0.40,<1",
 ]
 
 [build-system]

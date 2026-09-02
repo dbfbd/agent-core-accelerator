@@ -12,7 +12,7 @@
 | 5 | Streaming 与事件模型 | 已完成：自动验证，自检模式 |
 | 6 | Thread、Checkpoint、Store | 已完成：自动验证，自检模式 |
 | 7 | Interrupt、Resume 与人工审批 | 已完成：真实业务示例验证 |
-| 8 | FastAPI Agent Service | 待学习 |
+| 8 | FastAPI Agent Service | 已完成：真实 HTTP 示例验证 |
 | 9 | Tool Reliability | 待学习 |
 | 10 | MCP | 待学习 |
 | 11 | RAG | 待学习 |
@@ -21,7 +21,7 @@
 
 ## 当前模块目标
 
-下一模块将把 Agent 包装成 FastAPI 服务，提供真实 HTTP 调用边界。
+下一模块将为工具执行加入 timeout、错误分类、选择性 retry 和最小 audit 记录。
 
 ## 教学节奏
 

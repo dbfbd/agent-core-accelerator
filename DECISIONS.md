@@ -77,3 +77,19 @@
   但不会调用高风险函数。
 - 课程仍使用内存 checkpointer 和模拟重启；生产环境应使用持久化 checkpointer，
   并把实际执行器接到受审计的运维系统。
+
+## D-011：FastAPI 只作为现有 Agent 的 HTTP 边界
+
+- FastAPI 路由只做请求校验、Bearer 身份验证、错误映射和响应转换，不复制
+  LangGraph 节点、工具执行或审批逻辑。
+- 应用 lifespan 在启动时创建一张带 InMemorySaver 的共享图，因此 `/invoke`、
+  `/stream`、`/resume` 和 `/history` 使用同一套 thread 状态。
+- JSON 接口返回稳定的 PublicMessage，避免让客户端依赖 LangChain 消息类的全部
+  内部字段。
+- SSE 直接复用模块 5 的 AgentStreamEvent；模块 8 只负责转换成 ServerSentEvent，
+  并补充模块 7 的 approval_required 事件。
+- Bearer 令牌只提供最小身份验证，不代表完整授权；高风险动作仍由 ApprovalProof
+  和工具执行层校验。
+- 当前服务使用固定教学令牌、ScriptedModel、内存 checkpointer 和单进程 Uvicorn。
+  生产环境应使用安全的密钥管理、真实模型客户端、持久化 checkpointer、多实例
+  状态协调、速率限制、结构化日志和更完整的权限策略。

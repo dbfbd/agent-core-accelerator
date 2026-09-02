@@ -4,19 +4,20 @@
 
 ## 当前阶段
 
-模块 7：Interrupt、Resume 与人工审批。
+模块 8：FastAPI Agent Service。
 
 当前已有确定性故障证据工具、显式 LangGraph state/node/edge、稳定流式业务事件、
-同thread检查点续接、跨thread共享知识，以及高风险动作的人工批准/拒绝恢复链路。
-真实 LLM 与 HTTP 服务将在后续模块接入。
+同thread检查点续接、跨thread共享知识、高风险动作的人工批准/拒绝恢复链路，
+以及 FastAPI JSON/SSE HTTP 边界。真实 LLM 将在后续集成中接入。
 
-## 模块 7 实际示例
+## 模块 8 实际示例
 
 ```powershell
-uv run python examples/module_07_approval.py
+uv run python examples/module_08_http.py
 ```
 
-该示例先展示待审批申请和暂停时的完整消息，再分别恢复批准与拒绝路线。
+该示例启动真实本地 Uvicorn 服务器，访问 health、invoke、stream、history 和
+resume，并打印 JSON、SSE、完整 Message 历史与审批结果。
 
 ## 当前命令
 

@@ -1,6 +1,6 @@
 # Architecture
 
-## 当前结构：模块 7 Interrupt、Resume 与人工审批
+## 当前结构：模块 8 FastAPI Agent Service
 
 ```text
 agent-core-accelerator/
@@ -29,9 +29,13 @@ agent-core-accelerator/
 │     ├─ thread_archive.py # thread地址、自动存档和会话续接
 │     ├─ shared_knowledge.py # 跨thread服务知识Store
 │     ├─ action_tools.py # 必须经人工审批的高风险动作
-│     └─ approval_gate.py # 审批申请、暂停和授权匹配
+│     ├─ approval_gate.py # 审批申请、暂停和授权匹配
+│     ├─ api_models.py # 稳定的HTTP请求、响应和公开消息格式
+│     ├─ api_service.py # HTTP契约到thread/graph/history的应用服务
+│     └─ api_app.py # FastAPI lifespan、Bearer校验和HTTP/SSE路由
 ├─ examples/
-│  └─ module_07_approval.py # 批准与拒绝两条可运行路线
+│  ├─ module_07_approval.py # 批准与拒绝两条可运行路线
+│  └─ module_08_http.py # 真实Uvicorn服务器和HTTP客户端路线
 └─ tests/
    ├─ test_package.py     # 包安装边界测试
    ├─ test_models.py      # 输入校验测试
@@ -178,4 +182,45 @@ thread_continue(graph, thread_id, HumanMessage)
    ├─ 批准且精确匹配：restart_service()返回RestartReceipt
    └─ 拒绝：不调用restart_service()，返回ActionDenied ToolMessage
 → model读取ToolMessage并输出最终AIMessage
+```
+
+## 模块 8 调用链
+
+普通 JSON 路线：
+
+```text
+HTTP POST /invoke + Bearer token + JSON body
+→ FastAPI解析请求并由AgentInvokeRequest校验字段
+→ api_app.py:invoke_agent()
+→ api_service.py:AgentHttpService.invoke()
+→ thread_archive.py:thread_continue()
+→ checkpoint-backed LangGraph
+→ AgentRunResponse把完整Message转换成稳定JSON
+→ HTTP 200响应
+```
+
+SSE 路线：
+
+```text
+HTTP POST /stream
+→ api_app.py:stream_agent()
+→ AgentHttpService.open_stream()
+→ thread_prepare_turn()准备同一套thread输入
+→ streaming_agent.py:stream_compiled_graph()
+→ graph.astream(..., stream_mode="updates")
+→ AgentStreamEvent
+→ ServerSentEvent
+→ text/event-stream分批返回客户端
+```
+
+人工审批 HTTP 路线：
+
+```text
+POST /invoke触发interrupt
+→ AgentRunResponse(status="approval_required", approval=ApprovalTicket)
+→ POST /resume提交approved/operator/note
+→ Command(resume=HumanDecision)
+→ ApprovalProof精确匹配原ToolCall
+→ restart_service()或ActionDenied
+→ 完整ToolMessage与最终AIMessage返回客户端
 ```

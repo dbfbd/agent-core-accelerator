@@ -43,14 +43,14 @@ def checkpoint_build_resumable_agent(
     )
 
 
-async def thread_continue(
+async def thread_prepare_turn(
     graph: CompiledStateGraph,
     thread_id: str,
     user_input: str,
     *,
     context_messages: Sequence[BaseMessage] = (),
-) -> AgentState:
-    """Continue one saved conversation or start it when no checkpoint exists."""
+) -> tuple[AgentStateUpdate, ThreadAddress]:
+    """Prepare the next saved-thread input for invoke or streaming execution."""
 
     thread_address = thread_make_address(thread_id)
     saved_checkpoint = await graph.aget_state(thread_address)
@@ -67,6 +67,7 @@ async def thread_continue(
                 HumanMessage(content=user_input),
             ],
             "model_calls": 0,
+            "approval": None,
         }
     else:
         initial_state = create_initial_state(user_input)
@@ -77,8 +78,27 @@ async def thread_continue(
                 initial_state["messages"][1],
             ],
             "model_calls": 0,
+            "approval": None,
         }
 
+    return next_input, thread_address
+
+
+async def thread_continue(
+    graph: CompiledStateGraph,
+    thread_id: str,
+    user_input: str,
+    *,
+    context_messages: Sequence[BaseMessage] = (),
+) -> AgentState:
+    """Continue one saved conversation or start it when no checkpoint exists."""
+
+    next_input, thread_address = await thread_prepare_turn(
+        graph,
+        thread_id,
+        user_input,
+        context_messages=context_messages,
+    )
     return await graph.ainvoke(next_input, thread_address)
 
 
