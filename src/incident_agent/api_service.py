@@ -14,6 +14,7 @@ from incident_agent.api_models import (
     PublicMessage,
     PublicToolCall,
     ThreadHistoryResponse,
+    ToolAuditResponse,
 )
 from incident_agent.approval_gate import HumanDecision
 from incident_agent.graph_state import AgentState
@@ -21,10 +22,11 @@ from incident_agent.streaming_agent import stream_compiled_graph
 from incident_agent.thread_archive import (
     checkpoint_load_latest,
     checkpoint_load_pending_approval,
-    thread_continue,
     thread_prepare_turn,
     thread_resume_approval,
 )
+from incident_agent.tool_audit import ToolAuditLog
+from incident_agent.trace_observer import RunTrace, TraceObserver
 
 
 def _content_text(content: str | list[str | dict[str, object]]) -> str:
@@ -70,11 +72,28 @@ def _latest_answer(messages: list[BaseMessage]) -> str | None:
     return None
 
 
+def _latest_human_input(messages: list[BaseMessage]) -> str:
+    """Find the newest human text used to label a trace."""
+
+    for message in reversed(messages):
+        if message.type == "human":
+            return _content_text(message.content)
+    return "unknown"
+
+
 class AgentHttpService:
     """Own one checkpoint-backed graph and expose HTTP-shaped operations."""
 
-    def __init__(self, graph: CompiledStateGraph) -> None:
+    def __init__(
+        self,
+        graph: CompiledStateGraph,
+        *,
+        trace: TraceObserver | None = None,
+        audit: ToolAuditLog | None = None,
+    ) -> None:
         self._graph = graph
+        self._trace = trace or TraceObserver()
+        self._audit = audit or ToolAuditLog()
 
     async def _response_for_state(
         self,
@@ -86,6 +105,7 @@ class AgentHttpService:
         approval = await checkpoint_load_pending_approval(self._graph, thread_id)
         return AgentRunResponse(
             status="approval_required" if approval is not None else "completed",
+            run_id=state["run_id"],
             thread_id=thread_id,
             answer=_latest_answer(state["messages"]),
             model_calls=state["model_calls"],
@@ -96,26 +116,72 @@ class AgentHttpService:
     async def invoke(self, request: AgentInvokeRequest) -> AgentRunResponse:
         """Start or continue one thread and return its newest public state."""
 
-        state = await thread_continue(
+        graph_input, thread_address = await thread_prepare_turn(
             self._graph,
             request.thread_id,
             request.user_input,
         )
-        return await self._response_for_state(request.thread_id, state)
+        run_id = graph_input["run_id"]
+        self._trace.start_run(
+            run_id=run_id,
+            thread_id=request.thread_id,
+            user_input=request.user_input,
+        )
+        try:
+            state = await self._graph.ainvoke(graph_input, thread_address)
+            response = await self._response_for_state(request.thread_id, state)
+        except Exception as error:
+            self._trace.fail_run(run_id, error)
+            raise
+        self._trace.capture_state(
+            thread_id=request.thread_id,
+            user_input=request.user_input,
+            state=state,
+            status=(
+                "waiting_approval"
+                if response.status == "approval_required"
+                else "completed"
+            ),
+        )
+        return response
 
     async def resume(self, request: ApprovalResumeRequest) -> AgentRunResponse:
         """Resume one approval interrupt and return the resulting public state."""
 
-        state = await thread_resume_approval(
-            self._graph,
-            request.thread_id,
-            HumanDecision(
-                approved=request.approved,
-                operator=request.operator,
-                note=request.note,
-            ),
+        previous = await checkpoint_load_latest(self._graph, request.thread_id)
+        previous_state = (
+            cast(AgentState, previous.values) if previous is not None else None
         )
-        return await self._response_for_state(request.thread_id, state)
+        user_input = (
+            _latest_human_input(previous_state["messages"])
+            if previous_state is not None
+            else "approval resume"
+        )
+        try:
+            state = await thread_resume_approval(
+                self._graph,
+                request.thread_id,
+                HumanDecision(
+                    approved=request.approved,
+                    operator=request.operator,
+                    note=request.note,
+                ),
+            )
+        except Exception as error:
+            if (
+                previous_state is not None
+                and self._trace.get(previous_state["run_id"]) is not None
+            ):
+                self._trace.fail_run(previous_state["run_id"], error)
+            raise
+        response = await self._response_for_state(request.thread_id, state)
+        self._trace.capture_state(
+            thread_id=request.thread_id,
+            user_input=user_input,
+            state=state,
+            status="completed",
+        )
+        return response
 
     async def history(self, thread_id: str) -> ThreadHistoryResponse | None:
         """Return the newest saved state for one thread, or none when unknown."""
@@ -127,10 +193,53 @@ class AgentHttpService:
         state = cast(AgentState, snapshot.values)
         approval = await checkpoint_load_pending_approval(self._graph, thread_id)
         return ThreadHistoryResponse(
+            run_id=state["run_id"],
             thread_id=thread_id,
             model_calls=state["model_calls"],
             approval=approval,
             messages=tuple(_public_message(message) for message in state["messages"]),
+        )
+
+    def trace(self, run_id: str) -> RunTrace | None:
+        """Return one observed run trace without reading graph internals."""
+
+        return self._trace.get(run_id)
+
+    def audit(self, run_id: str) -> ToolAuditResponse:
+        """Return tool attempts grouped by the run ID carried in graph state."""
+
+        return ToolAuditResponse(
+            run_id=run_id,
+            records=self._audit.list_records(run_id=run_id),
+        )
+
+    async def _observe_stream(
+        self,
+        events: AsyncIterator[AgentStreamEvent],
+        *,
+        thread_id: str,
+        user_input: str,
+        run_id: str,
+    ) -> AsyncIterator[AgentStreamEvent]:
+        """Forward events and capture the saved state after streaming stops."""
+
+        try:
+            async for event in events:
+                yield event
+        except Exception as error:
+            self._trace.fail_run(run_id, error)
+            raise
+
+        snapshot = await checkpoint_load_latest(self._graph, thread_id)
+        if snapshot is None:
+            return
+        state = cast(AgentState, snapshot.values)
+        approval = await checkpoint_load_pending_approval(self._graph, thread_id)
+        self._trace.capture_state(
+            thread_id=thread_id,
+            user_input=user_input,
+            state=state,
+            status="waiting_approval" if approval is not None else "completed",
         )
 
     async def open_stream(
@@ -144,9 +253,21 @@ class AgentHttpService:
             request.thread_id,
             request.user_input,
         )
-        return stream_compiled_graph(
+        run_id = graph_input["run_id"]
+        self._trace.start_run(
+            run_id=run_id,
+            thread_id=request.thread_id,
+            user_input=request.user_input,
+        )
+        events = stream_compiled_graph(
             self._graph,
             graph_input,
             user_input=request.user_input,
             config=thread_address,
+        )
+        return self._observe_stream(
+            events,
+            thread_id=request.thread_id,
+            user_input=request.user_input,
+            run_id=run_id,
         )

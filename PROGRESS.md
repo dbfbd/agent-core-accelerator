@@ -112,3 +112,48 @@
   未运行测试
 - 是否通过：工具成功、可重试失败、不可重试失败和超时路线均有 Message、事件与
   audit 三层一致证据
+
+## 模块 10：MCP
+
+- 状态：已完成（真实 stdio 子进程示例模式）
+- 已实现：独立 FastMCP 工具服务器、MCP 客户端生命周期、工具发现、远程调用结果
+  归一化，以及远程 ToolSpec 到既有 ToolCatalog/ToolRuntime 的无缝接入
+- 实际示例：Python 子进程通过标准输入输出建立 MCP 会话，发现四个工具；模型请求
+  `get_service_metrics` 后，调用跨进程到达真实工具并返回匹配 call ID 的 ToolMessage
+- 验证：`examples/module_10_mcp.py`、Ruff 与锁文件检查通过；未运行测试
+- 是否通过：MCP 不改变 Agent 主循环，外部工具已能沿既有可靠执行链工作
+
+## 模块 11：RAG
+
+- 状态：已完成（真实本地知识检索示例模式）
+- 已实现：Markdown 运行手册、文档切块、确定性本地 TF-IDF 检索、带 source/heading/
+  score 的结果模型，以及普通 `search_runbooks` ToolSpec
+- 实际示例：checkout timeout 查询命中 `checkout-api.md` 的 Payment upstream timeout
+  和 Safe response 两节；完整 Message 链保留查询、ToolCall、带来源 ToolMessage 和
+  最终引用式 AIMessage
+- 验证：`examples/module_11_rag.py` 与 Ruff 通过；未运行测试
+- 是否通过：模型回答所用的本地知识已形成可追溯工具证据，而非直接塞入系统提示
+
+## 模块 12：Tracing 与 Evaluation
+
+- 状态：已完成（轨迹重建与离线业务用例模式）
+- 已实现：每轮独立 run_id、完整 Message 状态重建 RunTrace、按 run_id 查询工具
+  audit、RAG 引用用例、受控失败用例和确定性评分结果
+- 实际示例：RAG 路线与依赖失败路线都打印完整 System/Human/AI(ToolCall)/Tool/AI
+  轨迹；必需工具、最终答案文本和错误 ToolMessage 等检查全部通过
+- 验证：`examples/module_12_quality.py` 与 Ruff 通过；未运行测试
+- 是否通过：一次运行的“走了哪条路、用了什么工具、结果是否满足业务条件”可以
+  分别由 trace、audit 与 evaluation 回答
+
+## 模块 13：最终服务装配
+
+- 状态：已完成（真实 HTTP + 进程重启恢复模式）
+- 已实现：环境配置、demo/OpenAI 模型网关、SQLite checkpointer 生命周期、MCP/RAG/
+  runtime/graph 统一装配、可执行 `incident-agent` 命令，以及最终 FastAPI 服务
+- 实际示例：第一次 Uvicorn 进程通过 `/invoke` 产生完整 RAG Message 链，并通过
+  `/trace/{run_id}` 与 `/audit/{run_id}` 返回运行证据；关闭后第二次启动从同一 SQLite
+  文件通过 `/history/{thread_id}` 恢复相同 run_id 和全部 Message；另一条高风险路线
+  在第一次进程 interrupt，第二次进程通过 `/resume` 批准并完成模拟重启
+- 验证：`examples/module_13_final_service.py`、模块 10–12 示例、历史 HTTP 示例、锁
+  文件、Ruff、格式和 diff 检查；未运行测试
+- 是否通过：前 12 个模块已被接成一个可配置、可启动、可重启续接的最终母本项目

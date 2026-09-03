@@ -76,6 +76,7 @@ def should_retry(
 
 async def run_with_reliability(
     *,
+    run_id: str,
     tool_call_id: str,
     tool_name: str,
     handler: ToolHandler,
@@ -108,6 +109,7 @@ async def run_with_reliability(
             )
             audit.record(
                 ToolAttemptRecord(
+                    run_id=run_id,
                     tool_call_id=tool_call_id,
                     tool_name=tool_name,
                     attempt=attempt,
@@ -131,6 +133,7 @@ async def run_with_reliability(
         else:
             audit.record(
                 ToolAttemptRecord(
+                    run_id=run_id,
                     tool_call_id=tool_call_id,
                     tool_name=tool_name,
                     attempt=attempt,

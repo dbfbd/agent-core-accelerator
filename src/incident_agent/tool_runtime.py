@@ -83,6 +83,7 @@ class ToolRuntime:
         tool_call: ToolCall,
         *,
         approval: ApprovalProof | None = None,
+        run_id: str = "untracked",
     ) -> ToolMessage:
         """Execute one approved tool call and always preserve its call ID."""
 
@@ -101,6 +102,7 @@ class ToolRuntime:
                     note=approval.decision.note,
                 )
                 self._audit.record_denied(
+                    run_id=run_id,
                     tool_call_id=tool_call_id,
                     tool_name=name,
                     reason=denied.model_dump_json(),
@@ -115,6 +117,7 @@ class ToolRuntime:
         tool = self._catalog.resolve(name)
         try:
             result = await run_with_reliability(
+                run_id=run_id,
                 tool_call_id=tool_call_id,
                 tool_name=name,
                 handler=tool.handler,
@@ -167,7 +170,12 @@ async def execute_tool_call(
     tool_call: ToolCall,
     *,
     approval: ApprovalProof | None = None,
+    run_id: str = "untracked",
 ) -> ToolMessage:
     """Preserve the original direct-call API through the default runtime."""
 
-    return await DEFAULT_TOOL_RUNTIME.execute(tool_call, approval=approval)
+    return await DEFAULT_TOOL_RUNTIME.execute(
+        tool_call,
+        approval=approval,
+        run_id=run_id,
+    )

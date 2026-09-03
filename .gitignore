@@ -9,6 +9,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
+# Local secrets and persistent runtime state
+.env
+.data/
+
 # Build artifacts
 build/
 dist/

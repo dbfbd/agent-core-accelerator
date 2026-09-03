@@ -43,7 +43,10 @@ async def stream_compiled_graph(
 ) -> AsyncIterator[AgentStreamEvent]:
     """Translate one compiled graph run into stable public business events."""
 
-    yield AgentStartedEvent(user_input=user_input)
+    yield AgentStartedEvent(
+        run_id=graph_input.get("run_id", "untracked"),
+        user_input=user_input,
+    )
     final_answer: str | None = None
     final_model_calls = 0
 

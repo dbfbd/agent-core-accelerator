@@ -17,6 +17,7 @@ class AgentStartedEvent(AgentEvent):
     """The request was accepted and graph execution is about to begin."""
 
     event: Literal["agent_started"] = "agent_started"
+    run_id: str
     user_input: str
 
 

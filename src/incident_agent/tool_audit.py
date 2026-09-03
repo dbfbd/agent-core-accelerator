@@ -14,6 +14,7 @@ class ToolAttemptRecord(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    run_id: str = "untracked"
     tool_call_id: str
     tool_name: str
     attempt: int = Field(ge=0)
@@ -39,6 +40,7 @@ class ToolAuditLog:
     def record_denied(
         self,
         *,
+        run_id: str = "untracked",
         tool_call_id: str,
         tool_name: str,
         reason: str,
@@ -47,6 +49,7 @@ class ToolAuditLog:
 
         self.record(
             ToolAttemptRecord(
+                run_id=run_id,
                 tool_call_id=tool_call_id,
                 tool_name=tool_name,
                 attempt=0,
@@ -62,12 +65,14 @@ class ToolAuditLog:
     def list_records(
         self,
         *,
+        run_id: str | None = None,
         tool_call_id: str | None = None,
     ) -> tuple[ToolAttemptRecord, ...]:
         """Return an immutable snapshot, optionally limited to one tool call."""
 
-        if tool_call_id is None:
-            return tuple(self._records)
         return tuple(
-            record for record in self._records if record.tool_call_id == tool_call_id
+            record
+            for record in self._records
+            if (run_id is None or record.run_id == run_id)
+            and (tool_call_id is None or record.tool_call_id == tool_call_id)
         )

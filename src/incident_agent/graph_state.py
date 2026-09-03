@@ -14,6 +14,7 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     model_calls: int
     approval: ApprovalProof | None
+    run_id: str
 
 
 class AgentStateUpdate(TypedDict, total=False):
@@ -22,3 +23,4 @@ class AgentStateUpdate(TypedDict, total=False):
     messages: list[BaseMessage]
     model_calls: int
     approval: ApprovalProof | None
+    run_id: str

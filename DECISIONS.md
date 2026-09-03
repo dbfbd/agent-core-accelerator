@@ -106,3 +106,35 @@
 - 工具耗尽尝试后转换成带原 ToolCall ID 的错误 ToolMessage，让模型能够解释失败，
   而不是直接破坏整张图。审批凭证缺失仍抛出 ToolApprovalError，不降级为普通失败。
 - 每一次真实尝试形成 ToolAttemptRecord；拒绝操作记为 attempt=0，明确它没有执行。
+
+## D-013：MCP 只替换工具来源，不复制 Agent 主循环
+
+- MCP server 独立运行，通过 stdio 提供工具；McpGateway 只负责连接、发现和远程调用。
+- 发现结果转换成现有 ToolSpec，因此审批、timeout、retry、audit 和 ToolMessage 继续由
+  本地 ToolRuntime 统一处理。
+- MCP 版本限制为稳定的 1.x；不提前依赖尚未稳定的 2.x 接口。
+
+## D-014：RAG 以普通工具进入图
+
+- 运行手册先切成保留 source 和 heading 的小段，再由确定性本地索引排序。
+- `search_runbooks` 与指标、日志工具使用同一种 ToolSpec，不在模型节点旁边增加第二条
+  隐式检索流程。
+- 当前本地词项评分便于教学、离线运行和复现；大规模生产知识库可替换索引实现，
+  但必须保留来源字段和同一工具契约。
+
+## D-015：trace、audit、evaluation 回答三个不同问题
+
+- RunTrace 从公开 Message 状态重建“这轮按什么顺序发生”，不保存或暴露模型隐藏推理。
+- ToolAuditLog 记录“每一次工具尝试实际发生了什么”，包含运行 ID、耗时和失败分类。
+- EvaluationCase 判断“最终业务结果是否满足预先声明的条件”，不与在线路由逻辑耦合。
+- run_id 标识一次用户轮次，thread_id 标识可跨轮次延续的会话，二者不得混用。
+
+## D-016：最终项目只在 composition root 组装可替换部件
+
+- `bootstrap.py` 是 composition root（统一装配入口）：它创建模型、工具目录、RAG、
+  runtime、SQLite checkpointer、图和 HTTP service，业务文件不读取环境变量。
+- FastAPI lifespan 持有这些资源的打开与关闭范围；聚焦教学示例仍可注入内存版 service。
+- demo 模型用于无需 API 账号的完整本地验收；`model_provider=openai` 时才创建
+  ChatOpenAI，并通过 Responses API 使用同一套工具 schema。
+- SQLite 只持久化 LangGraph thread 检查点；当前 trace 和 audit 是进程内观测数据，
+  生产多实例部署应把它们输出到集中式可观测系统。

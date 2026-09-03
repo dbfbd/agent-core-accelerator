@@ -14,14 +14,16 @@
 | 7 | Interrupt、Resume 与人工审批 | 已完成：真实业务示例验证 |
 | 8 | FastAPI Agent Service | 已完成：真实 HTTP 示例验证 |
 | 9 | Tool Reliability | 已完成：真实可靠性示例验证 |
-| 10 | MCP | 待学习 |
-| 11 | RAG | 待学习 |
-| 12 | Tracing 与 Evaluation | 待学习 |
-| 13 | 毕业整理与源码迁移 | 待学习 |
+| 10 | MCP | 已完成：真实 stdio 进程发现与调用 |
+| 11 | RAG | 已完成：真实运行手册检索链 |
+| 12 | Tracing 与 Evaluation | 已完成：完整轨迹与离线业务评估 |
+| 13 | 毕业整理与源码迁移 | 已完成：最终服务与重启恢复验证 |
 
 ## 当前模块目标
 
-下一模块将使用 MCP 把外部进程提供的工具接入现有 ToolCatalog 和 ToolRuntime。
+13 个模块均已实现。当前母本已经形成可切换演示/真实模型、可选 MCP、内置 RAG、
+SQLite 持久化和 FastAPI 服务的最终项目；下一步是按模块进行教学复盘或继续扩展真实
+部署能力，而不是补齐缺失模块。
 
 ## 教学节奏
 

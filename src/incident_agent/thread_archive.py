@@ -1,6 +1,7 @@
 """Thread addresses and checkpoint-backed conversation continuation."""
 
 from collections.abc import Sequence
+from uuid import uuid4
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -72,6 +73,7 @@ async def thread_prepare_turn(
             ],
             "model_calls": 0,
             "approval": None,
+            "run_id": str(uuid4()),
         }
     else:
         initial_state = create_initial_state(user_input)
@@ -83,6 +85,7 @@ async def thread_prepare_turn(
             ],
             "model_calls": 0,
             "approval": None,
+            "run_id": initial_state["run_id"],
         }
 
     return next_input, thread_address

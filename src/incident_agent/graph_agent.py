@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from typing import Literal
+from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -94,7 +95,11 @@ async def execute_tools(
     tool_messages = []
     for tool_call in ai_message.tool_calls:
         tool_messages.append(
-            await tool_runtime.execute(tool_call, approval=state["approval"])
+            await tool_runtime.execute(
+                tool_call,
+                approval=state["approval"],
+                run_id=state["run_id"],
+            )
         )
     return {"messages": tool_messages, "approval": None}
 
@@ -141,7 +146,7 @@ def build_agent_graph(
     )
 
 
-def create_initial_state(user_input: str) -> AgentState:
+def create_initial_state(user_input: str, *, run_id: str | None = None) -> AgentState:
     """Create the shared starting state used by every graph run mode."""
 
     return {
@@ -151,6 +156,7 @@ def create_initial_state(user_input: str) -> AgentState:
         ],
         "model_calls": 0,
         "approval": None,
+        "run_id": run_id or str(uuid4()),
     }
 
 

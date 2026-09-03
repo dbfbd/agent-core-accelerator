@@ -1,6 +1,6 @@
 # Architecture
 
-## 当前结构：模块 9 Tool Reliability
+## 当前结构：模块 13 最终项目
 
 ```text
 agent-core-accelerator/
@@ -12,9 +12,16 @@ agent-core-accelerator/
 ├─ ARCHITECTURE.md      # 当前结构和调用链
 ├─ DECISIONS.md         # 设计理由和教学简化
 ├─ .gitignore           # Git 忽略规则
+├─ .env.example         # 无真实密钥的部署配置模板
+├─ knowledge/runbooks/  # RAG 使用的可追溯 Markdown 运行手册
 ├─ src/
 │  └─ incident_agent/
 │     ├─ __init__.py    # 包边界
+│     ├─ settings.py    # 环境变量到已校验配置
+│     ├─ main.py        # incident-agent 命令与 ASGI app
+│     ├─ bootstrap.py   # 最终项目统一装配入口
+│     ├─ model_gateway.py # demo/OpenAI模型选择
+│     ├─ persistence.py # SQLite checkpointer生命周期
 │     ├─ models.py      # 外部输入校验
 │     ├─ diagnostics.py # 异步准备流程
 │     ├─ fixtures.py    # 固定本地证据
@@ -23,6 +30,14 @@ agent-core-accelerator/
 │     ├─ tool_catalog.py # 工具名称、schema与异步handler目录
 │     ├─ tool_reliability.py # timeout、错误分类和选择性retry
 │     ├─ tool_audit.py # 每一次工具尝试的最小审计账本
+│     ├─ mcp_server.py # 独立stdio MCP工具进程
+│     ├─ mcp_gateway.py # MCP连接、发现和远程调用
+│     ├─ rag_models.py # 文档、切块、命中和查询数据
+│     ├─ rag_index.py # 本地运行手册切块与排序
+│     ├─ rag_tool.py # 把RAG注册为普通Agent工具
+│     ├─ trace_observer.py # 按run_id重建可公开运行轨迹
+│     ├─ evaluation_cases.py # 确定性业务验收条件
+│     ├─ evaluation.py # 状态到评估结果的检查器
 │     ├─ scripted_model.py # 确定性假模型
 │     ├─ agent_loop.py  # 手工 model-tool-model 循环
 │     ├─ graph_state.py # LangGraph 共享状态及部分更新结构
@@ -39,7 +54,11 @@ agent-core-accelerator/
 ├─ examples/
 │  ├─ module_07_approval.py # 批准与拒绝两条可运行路线
 │  ├─ module_08_http.py # 真实Uvicorn服务器和HTTP客户端路线
-│  └─ module_09_tool_reliability.py # 重试、永久错误和超时路线
+│  ├─ module_09_tool_reliability.py # 重试、永久错误和超时路线
+│  ├─ module_10_mcp.py # 真实stdio MCP跨进程路线
+│  ├─ module_11_rag.py # 带来源的运行手册检索路线
+│  ├─ module_12_quality.py # trace与evaluation路线
+│  └─ module_13_final_service.py # HTTP、RAG、SQLite重启恢复路线
 └─ tests/
    ├─ test_package.py     # 包安装边界测试
    ├─ test_models.py      # 输入校验测试
@@ -249,3 +268,85 @@ AIMessage(ToolCall)
 
 ToolCatalog只回答“工具在哪里”；ToolReliability只回答“失败后怎么办”；
 ToolAuditLog只记录“每次实际发生了什么”；ToolRuntime负责按固定顺序组织三者。
+
+## 模块 10 调用链
+
+```text
+mcp_server.py:main()启动独立stdio进程
+→ McpGateway.connect()建立ClientSession
+→ discover_tool_specs()把远程schema和handler变成ToolSpec
+→ ToolCatalog/ToolRuntime沿用本地可靠执行链
+→ handler调用McpGateway.call_tool()
+→ MCP server执行确定性工具
+→ MCP结果归一化为ToolMessage
+→ model读取ToolMessage并给出最终AIMessage
+```
+
+MCP只改变“工具代码位于哪个进程”，没有产生第二套 model-tool-model 循环。
+
+## 模块 11 调用链
+
+```text
+Markdown runbook
+→ load_runbooks()保留文件来源
+→ split_runbooks()按二级标题切成DocumentChunk
+→ RunbookIndex建立本地词项统计
+→ register_rag_tool()注册search_runbooks
+→ AIMessage(ToolCall: search_runbooks)
+→ ToolRuntime执行索引查询
+→ RetrievalResult(source + heading + text + score)
+→ ToolMessage
+→ final AIMessage按source说明证据
+```
+
+RAG的独特性是“先取回与问题相关、可标明来源的文本，再让模型回答”，不是把全部
+文档永久塞进系统提示。
+
+## 模块 12 调用链
+
+```text
+每次thread新轮次生成run_id
+→ run_id随AgentState进入模型节点和工具节点
+→ ToolAttemptRecord按run_id归组
+→ TraceObserver从完整Message重建顺序步骤
+→ /trace/{run_id}回答运行路线
+→ /audit/{run_id}回答真实工具尝试
+→ evaluate_state(case, state)回答业务条件是否满足
+```
+
+`thread_id`是多轮会话地址，`run_id`是其中某一轮的检查编号；trace不包含隐藏模型
+推理，只描述公开 Message 和工具执行事实。
+
+## 模块 13 最终调用链
+
+```text
+incident-agent命令
+→ settings.py读取并校验.env/环境变量
+→ bootstrap.py选择demo或OpenAI模型
+→ 选择本地ToolCatalog或MCP ToolCatalog
+→ 加入search_runbooks并创建ToolRuntime
+→ persistence.py打开SQLite checkpointer
+→ build_agent_graph()编译最终LangGraph
+→ AgentHttpService连接图、trace和audit
+→ api_app.py在FastAPI lifespan内持有整个service
+→ /invoke、/stream、/resume、/history、/trace、/audit
+→ 关停时按相反顺序关闭SQLite与MCP资源
+```
+
+重启恢复路线：
+
+```text
+第一次POST /invoke(thread_id="persistent-checkout")
+→ SQLite保存System/Human/AI(ToolCall)/ToolMessage/AI与run_id
+→ 整个Uvicorn服务关闭
+→ 第二个Uvicorn服务打开同一SQLite文件
+→ GET /history/persistent-checkout
+→ 返回相同run_id和完整Message历史
+
+第一次POST /invoke(thread_id="persistent-restart")触发restart_service
+→ interrupt申请单和AIMessage(ToolCall)保存进SQLite
+→ 整个Uvicorn服务关闭并重新启动
+→ POST /resume(thread_id="persistent-restart", approved=true)
+→ 从SQLite恢复interrupt现场
+→ ToolMessage(RestartReceipt) → final AIMessage
+```

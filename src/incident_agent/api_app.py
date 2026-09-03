@@ -1,7 +1,7 @@
 """FastAPI routes that expose the checkpoint-backed incident agent."""
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from secrets import compare_digest
 from typing import Annotated
 
@@ -17,6 +17,7 @@ from incident_agent.api_models import (
     ApprovalResumeRequest,
     HealthResponse,
     ThreadHistoryResponse,
+    ToolAuditResponse,
 )
 from incident_agent.api_service import AgentHttpService
 from incident_agent.streaming_agent import UnexpectedStreamUpdateError
@@ -26,22 +27,44 @@ from incident_agent.thread_archive import (
     checkpoint_build_resumable_agent,
 )
 from incident_agent.tool_runtime import ToolRuntime, build_default_tool_runtime
+from incident_agent.trace_observer import RunTrace, TraceObserver
 
 router = APIRouter()
 bearer_scheme = HTTPBearer(auto_error=False)
+type AgentServiceContextFactory = Callable[
+    [], AbstractAsyncContextManager[AgentHttpService]
+]
 
 
 @asynccontextmanager
-async def app_lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Build the shared saved-state agent at startup and release it at shutdown."""
+async def _default_service_context(
+    app: FastAPI,
+) -> AsyncIterator[AgentHttpService]:
+    """Build the original in-memory service used by focused module examples."""
 
     graph = checkpoint_build_resumable_agent(
         app.state.agent_model,
         tool_runtime=app.state.tool_runtime,
     )
-    app.state.agent_service = AgentHttpService(graph)
-    yield
-    del app.state.agent_service
+    yield AgentHttpService(
+        graph,
+        trace=app.state.trace_observer,
+        audit=app.state.tool_runtime.audit,
+    )
+
+
+@asynccontextmanager
+async def app_lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Open one service context and release all owned resources at shutdown."""
+
+    factory: AgentServiceContextFactory | None = app.state.service_context_factory
+    context = factory() if factory is not None else _default_service_context(app)
+    async with context as service:
+        app.state.agent_service = service
+        try:
+            yield
+        finally:
+            del app.state.agent_service
 
 
 def get_agent_service(request: Request) -> AgentHttpService:
@@ -74,6 +97,10 @@ def require_bearer(
 AgentServiceDependency = Annotated[AgentHttpService, Depends(get_agent_service)]
 AuthenticatedCaller = Annotated[str, Depends(require_bearer)]
 ThreadIdPath = Annotated[
+    str,
+    Path(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$"),
+]
+RunIdPath = Annotated[
     str,
     Path(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$"),
 ]
@@ -128,6 +155,33 @@ async def history(
     return response
 
 
+@router.get("/trace/{run_id}", response_model=RunTrace)
+async def trace(
+    run_id: RunIdPath,
+    service: AgentServiceDependency,
+    _caller: AuthenticatedCaller,
+) -> RunTrace:
+    """Return the reconstructed message trace for one Agent run."""
+
+    response = service.trace(run_id)
+    if response is None:
+        raise HTTPException(status_code=404, detail="Unknown run_id")
+    return response
+
+
+@router.get("/audit/{run_id}", response_model=ToolAuditResponse)
+async def audit(
+    run_id: RunIdPath,
+    service: AgentServiceDependency,
+    _caller: AuthenticatedCaller,
+) -> ToolAuditResponse:
+    """Return every recorded tool attempt for one Agent run."""
+
+    if service.trace(run_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown run_id")
+    return service.audit(run_id)
+
+
 async def _sse_events(
     events: AsyncIterator[AgentStreamEvent],
 ) -> AsyncIterator[ServerSentEvent]:
@@ -169,14 +223,18 @@ async def stream_agent(
 
 def create_app(
     *,
-    model: ToolBindableModel,
+    model: ToolBindableModel | None = None,
     api_token: str,
     tool_runtime: ToolRuntime | None = None,
+    trace_observer: TraceObserver | None = None,
+    service_context_factory: AgentServiceContextFactory | None = None,
 ) -> FastAPI:
-    """Create one configured FastAPI application around a supplied chat model."""
+    """Create FastAPI around either focused parts or a complete service context."""
 
     if not api_token.strip():
         raise ValueError("api_token must not be empty")
+    if model is None and service_context_factory is None:
+        raise ValueError("model or service_context_factory must be supplied")
 
     app = FastAPI(
         title="Reliable DevOps Incident Agent",
@@ -186,5 +244,7 @@ def create_app(
     app.state.agent_model = model
     app.state.api_token = api_token
     app.state.tool_runtime = tool_runtime or build_default_tool_runtime()
+    app.state.trace_observer = trace_observer or TraceObserver()
+    app.state.service_context_factory = service_context_factory
     app.include_router(router)
     return app

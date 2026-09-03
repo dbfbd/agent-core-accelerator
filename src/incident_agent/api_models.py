@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from incident_agent.approval_gate import ApprovalTicket
+from incident_agent.tool_audit import ToolAttemptRecord
 
 
 class HttpPayload(BaseModel):
@@ -52,6 +53,7 @@ class AgentRunResponse(HttpPayload):
     """JSON response returned after invoke or approval resume."""
 
     status: Literal["completed", "approval_required"]
+    run_id: str
     thread_id: str
     answer: str | None
     model_calls: int
@@ -62,10 +64,18 @@ class AgentRunResponse(HttpPayload):
 class ThreadHistoryResponse(HttpPayload):
     """Newest checkpoint state exposed through the history endpoint."""
 
+    run_id: str
     thread_id: str
     model_calls: int
     approval: ApprovalTicket | None
     messages: tuple[PublicMessage, ...]
+
+
+class ToolAuditResponse(HttpPayload):
+    """All recorded tool attempts belonging to one Agent run."""
+
+    run_id: str
+    records: tuple[ToolAttemptRecord, ...]
 
 
 class HealthResponse(HttpPayload):
